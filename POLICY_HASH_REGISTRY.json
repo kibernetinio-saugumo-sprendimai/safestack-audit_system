@@ -1,0 +1,15 @@
+{
+  "registry_name": "SafeStack Governance Hash Registry",
+  "last_updated": "2026-05-06T04:13:00Z",
+  "hashes": {
+    "GLOBAL_POLICY.md": "PENDING_VERIFICATION",
+    "PRIORITY_MODEL.md": "PENDING_VERIFICATION",
+    "THREAT_MODEL.md": "PENDING_VERIFICATION",
+    "STATE_MODEL.md": "PENDING_VERIFICATION",
+    "EXIT_CODE_POLICY.md": "PENDING_VERIFICATION",
+    "CHAIN_OF_TRUST.md": "PENDING_VERIFICATION",
+    "IMMUTABILITY_POLICY.md": "PENDING_VERIFICATION",
+    "FORENSICS_POLICY.md": "PENDING_VERIFICATION"
+  },
+  "verification_command": "Get-FileHash <FILE> | Select-Object Hash"
+}

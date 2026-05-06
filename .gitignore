@@ -1,0 +1,32 @@
+# SafeStack Lockdown System Git Ignore
+
+# Runtime artifacts (Forensics)
+runtime/
+reports/
+fixes/
+logs/
+forensics/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment & Secrets
+.env
+*.key
+*.pem
+*.token
+
+# Local configurations
+*.json_registry
+config.local.json
+
+# IDEs
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db

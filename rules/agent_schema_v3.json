@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "safestack.audit.agent.schema.v3",
+  "title": "SafeStack Audit Agent Output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["agent", "status", "findings"],
+  "properties": {
+    "agent": {
+      "type": "string",
+      "enum": ["ARCHITECT", "CODER", "SECURITY", "DOCUMENTER", "FIXER", "REVIEWER"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pass", "fail"]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "severity", "file", "evidence", "issue", "recommendation"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low", "info"]
+          },
+          "file": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 1
+          },
+          "issue": {
+            "type": "string",
+            "minLength": 1
+          },
+          "recommendation": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

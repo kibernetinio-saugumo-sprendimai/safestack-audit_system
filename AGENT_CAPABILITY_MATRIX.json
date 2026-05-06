@@ -1,0 +1,29 @@
+{
+  "matrix_version": "1.0",
+  "agents": {
+    "ARCHITECT": {
+      "capabilities": ["structural_audit", "dependency_verification"],
+      "restrictions": ["patching", "security_vulnerability_audit", "prose_output"]
+    },
+    "CODER": {
+      "capabilities": ["syntax_audit", "idempotency_verification", "bash_standards"],
+      "restrictions": ["patching", "security_audit", "architecture_approval"]
+    },
+    "SECURITY": {
+      "capabilities": ["vulnerability_detection", "input_validation_audit"],
+      "restrictions": ["patching", "code_style_audit", "architecture_approval"]
+    },
+    "DOCUMENTER": {
+      "capabilities": ["metadata_verification", "operator_guidance_audit"],
+      "restrictions": ["patching", "security_audit", "code_audit", "architecture_audit"]
+    },
+    "FIXER": {
+      "capabilities": ["patch_generation"],
+      "restrictions": ["json_output", "audit_finding_generation", "prose_output"]
+    },
+    "REVIEWER": {
+      "capabilities": ["compliance_verification", "contract_audit"],
+      "restrictions": ["patching", "finding_generation", "prose_output"]
+    }
+  }
+}

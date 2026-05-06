@@ -1,0 +1,16 @@
+{
+  "runtime_name": "SafeStack Control Plane",
+  "runtime_version": "3.0.0-lockdown",
+  "mode": "STRICT_ENFORCEMENT",
+  "features": {
+    "strict_mode": true,
+    "agent_runtime": true,
+    "fixer_guard": true,
+    "forensics_logging": true,
+    "chain_of_trust": true
+  },
+  "compatibility": {
+    "schema_version": "v3",
+    "contract_version": "v1"
+  }
+}
