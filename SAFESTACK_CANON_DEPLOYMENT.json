@@ -1,0 +1,89 @@
+{
+  "schema": "safestack.deployment.canon.v1",
+  "version": "1.0.0",
+  "philosophy": {
+    "core_rule": "If deployment cannot be verified, it cannot be trusted.",
+    "principles": [
+      "minimalism",
+      "repeatability",
+      "determinism",
+      "least_privilege",
+      "default_deny",
+      "verify_apply_verify",
+      "logs_or_it_did_not_happen"
+    ]
+  },
+  "requirements": {
+    "execution": {
+      "must_run_with_explicit_mode": true,
+      "allowed_modes": ["dry-run", "apply", "audit"],
+      "must_fail_closed": true,
+      "must_use_lockfile": true
+    },
+    "system": {
+      "supported_os_family": ["debian", "ubuntu"],
+      "minimum_disk_free_mb": 1024,
+      "minimum_ram_mb": 512
+    },
+    "security": {
+      "require_input_validation": true,
+      "require_least_privilege": true,
+      "forbid_plaintext_secrets": true,
+      "require_ssh_root_login_disabled": true,
+      "require_password_ssh_disabled": true,
+      "require_firewall_enabled": true,
+      "default_network_policy": "deny"
+    },
+    "logging": {
+      "required": true,
+      "log_path": "/var/log/safestack-deployment.log",
+      "required_fields": ["timestamp", "action", "result"]
+    },
+    "verification": {
+      "required_pattern": "VERIFY_APPLY_VERIFY",
+      "post_deployment_checks_required": true
+    },
+    "rollback": {
+      "required_for_production": true,
+      "backup_required_before_apply": true
+    }
+  },
+  "checks": [
+    {
+      "id": "root-login-disabled",
+      "severity": "critical",
+      "type": "file_regex",
+      "path": "/etc/ssh/sshd_config",
+      "pattern": "^\\s*PermitRootLogin\\s+no\\s*$",
+      "expected": true
+    },
+    {
+      "id": "ssh-password-disabled",
+      "severity": "critical",
+      "type": "file_regex",
+      "path": "/etc/ssh/sshd_config",
+      "pattern": "^\\s*PasswordAuthentication\\s+no\\s*$",
+      "expected": true
+    },
+    {
+      "id": "firewall-active",
+      "severity": "high",
+      "type": "command_contains",
+      "command": "ufw status",
+      "contains": "Status: active"
+    },
+    {
+      "id": "disk-free-ok",
+      "severity": "medium",
+      "type": "disk_free_mb",
+      "path": "/",
+      "minimum_mb": 1024
+    },
+    {
+      "id": "log-file-exists",
+      "severity": "medium",
+      "type": "file_exists",
+      "path": "/var/log/safestack-deployment.log"
+    }
+  ]
+}

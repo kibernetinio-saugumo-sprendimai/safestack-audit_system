@@ -1,0 +1,27 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "🚀 Paleisti Agentų Serverį",
+            "type": "shell",
+            "command": ".\\venv\\Scripts\\python server.py",
+            "group": "none",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🤖 Klausti Agentų (Pavyzdys)",
+            "type": "shell",
+            "command": "Invoke-RestMethod -Uri http://localhost:8000/ask -Method Post -Body '{\"task\": \"Sukurk paprastą Flask aplikaciją\"}' -ContentType 'application/json'",
+            "group": "none",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        }
+    ]
+}

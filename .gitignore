@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Database / State
+*.sqlite
+*.sqlite-journal
+
+# Logs & Forensics
+*.log
+LOCKDOWN_FORENSICS.log
+
+# Audit Results (Keep the 'golden' ones if you manually moved them)
+LATEST_AUDIT_REPORT.md
+generated_code/
+runtime/quarantine/
+!runtime/quarantine/golden/
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
