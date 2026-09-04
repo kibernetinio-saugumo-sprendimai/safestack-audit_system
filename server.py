@@ -63,7 +63,7 @@ async def run_team(request: TaskRequest):
 if __name__ == "__main__":
     print("\n" + "="*40)
     print("SafeStack AI Agents server starting...")
-    print("Version: 1.0.0-GOLDEN [AUTHORITATIVE]")
+    print("Version: candidate — independent approval required")
     print("Address: http://localhost:8000")
     print("="*40 + "\n")
     uvicorn.run(server, host="127.0.0.1", port=8000)
