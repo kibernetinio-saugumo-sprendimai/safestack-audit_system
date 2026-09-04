@@ -9,6 +9,8 @@ ven/
 # Database / State
 *.sqlite
 *.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
 
 # Logs & Forensics
 *.log

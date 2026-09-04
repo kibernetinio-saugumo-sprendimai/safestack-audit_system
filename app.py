@@ -65,42 +65,71 @@ def call_ollama(role: str, code: str, custom_prompt: str, expected_schema: str =
     }
     try:
         response = requests.post(url, json=payload, timeout=300)
+        response.raise_for_status()
         content = response.json()['message']['content'].strip()
         
-        # 1. TRANSPORT & PROTOCOL & SCHEMA VALIDATION (Using strict_mode)
-        v_result = validate_output(content)
-        if v_result["status"] != "valid":
-            qid = quarantine(content, "protocol", v_result["reason"])
-            return json.dumps({"agent": role, "status": "quarantined", "quarantine_id": qid["hash"]})
-
-        data = v_result["artifact"]
-        # Enforce Canonical Serialization
-        content = canonical_json(data)
-        
-        # 4. EVIDENCE VALIDATION (for findings)
-        if "findings" in data:
-            for f in data["findings"]:
-                if not all(k in f for k in ["id", "issue", "evidence", "severity"]):
-                    qid = quarantine(content, "schema", "Invalid evidence structure")
-                    return json.dumps({"agent": role, "status": "quarantined", "quarantine_id": qid["hash"]})
+        if expected_schema:
+            v_result = validate_output(content)
+            if v_result["status"] != "valid":
+                qid = quarantine(content, "protocol", v_result["reason"])
+                return json.dumps({"agent": role, "status": "fail", "findings": [], "issue": f"quarantined:{qid['hash']}"})
+            content = canonical_json(v_result["artifact"])
+        elif not content or len(content.encode("utf-8", errors="replace")) > 512 * 1024 or "```" in content or "\x00" in content:
+            qid = quarantine(content, "protocol", "Invalid generated code")
+            return f"# QUARANTINED: {qid['hash']}"
 
         return content
-    except Exception as e: 
-        return json.dumps({"agent": role, "status": "error", "reason": str(e)})
+    except Exception as e:
+        return json.dumps({"agent": role, "status": "fail", "findings": [], "issue": type(e).__name__})
+
+def network_isolation_active() -> bool:
+    if os.name != "posix" or not os.path.exists("/proc/net/route"):
+        return False
+    with open("/proc/net/route", "r", encoding="ascii", errors="ignore") as handle:
+        next(handle, None)
+        for line in handle:
+            fields = line.split()
+            if len(fields) > 2 and fields[0] != "lo" and fields[1] == "00000000":
+                return False
+    return True
+
 
 def read_project_files(path: str):
-    path = os.path.normpath(path.replace('"', '').replace("'", "").strip())
-    if not os.path.exists(path): return "ERROR: PATH_NOT_FOUND", ""
-    for root, _, files in os.walk(path):
-        if any(x in root for x in ['venv', '.git', '__pycache__']): continue
-        for file in sorted(files): # Deterministic sort
-            if file.endswith(('.sh', '.py')):
-                try:
-                    full_path = os.path.join(root, file)
-                    with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        return f"FILE: {file}\n{f.read()}", file
-                except: continue
-    return "ERROR: NO_SCRIPTS", ""
+    configured_root = os.environ.get("SAFESTACK_AUDIT_ROOT", "").strip()
+    if not configured_root:
+        return "ERROR: AUDIT_ROOT_NOT_CONFIGURED", ""
+    allowed_root = os.path.realpath(configured_root)
+    target = os.path.realpath(path.replace('"', '').replace("'", "").strip())
+    try:
+        if os.path.commonpath([allowed_root, target]) != allowed_root:
+            return "ERROR: PATH_OUTSIDE_AUDIT_ROOT", ""
+    except ValueError:
+        return "ERROR: PATH_OUTSIDE_AUDIT_ROOT", ""
+    if not os.path.isdir(target):
+        return "ERROR: PATH_NOT_FOUND", ""
+
+    chunks = []
+    names = []
+    total_bytes = 0
+    for root, dirs, files in os.walk(target, followlinks=False):
+        dirs[:] = sorted(d for d in dirs if d not in {'venv', '.venv', '.git', '__pycache__'} and not os.path.islink(os.path.join(root, d)))
+        for file in sorted(files):
+            if not file.endswith(('.sh', '.py')):
+                continue
+            full_path = os.path.join(root, file)
+            if os.path.islink(full_path) or os.path.getsize(full_path) > 512 * 1024:
+                continue
+            with open(full_path, 'r', encoding='utf-8', errors='strict') as handle:
+                content = handle.read()
+            total_bytes += len(content.encode('utf-8'))
+            if total_bytes > 5 * 1024 * 1024 or len(names) >= 200:
+                return "ERROR: PROJECT_SIZE_LIMIT", ""
+            relative = os.path.relpath(full_path, target).replace('\\', '/')
+            chunks.append(f"FILE: {relative}\n{content}")
+            names.append(relative)
+    if not chunks:
+        return "ERROR: NO_SCRIPTS", ""
+    return "\n\n".join(chunks), ", ".join(names)
 
 def get_governance_stack():
     files = {
@@ -127,7 +156,8 @@ def get_governance_stack():
         "POL_SOVEREIGN": "governance/policy_bundle/21_30_SOVEREIGN_SPECS.md",
         "POL_ROADMAP": "IMPLEMENTATION_ROADMAP.md",
         "POL_ENFORCEMENT": "governance/policy_bundle/32_ENFORCEMENT_CORE.md",
-        "POL_INTEGRITY_DOCTRINE": "governance/policy_bundle/33_PROTOCOL_INTEGRITY_DOCTRINE.md"
+        "POL_INTEGRITY_DOCTRINE": "governance/policy_bundle/33_PROTOCOL_INTEGRITY_DOCTRINE.md",
+        "POL_VERIFICATION_ERA": "governance/policy_bundle/34_VERIFICATION_ERA_DIRECTIVE.md"
     }
     stack = ""
     for label, filename in files.items():
@@ -146,6 +176,8 @@ def get_governance_stack():
 # --- 3. AGENTS ---
 
 def discoverer(state: State, *, store: BaseStore):
+    if not network_isolation_active():
+        return lockdown(state, "NETWORK_ISOLATION_NOT_ACTIVE")
     raw_input = state["messages"][0].content.strip()
     # Remove 'audit ' prefix if present
     p = re.sub(r'^audit\s+', '', raw_input, flags=re.IGNORECASE).strip()
@@ -202,7 +234,7 @@ def security(state: State):
 def documenter(state: State):
     ctx = state.get("project_context", "")
     if not ctx: return {"messages": [("ai", "{}")]}
-    prompt = "Technical Compliance Writer. Output JSON summary only. Schema: {'agent': 'DOCUMENTER', 'status': 'pass', 'summary': '...'}"
+    prompt = "Technical Compliance Writer. Output JSON only. Schema: {'agent': 'DOCUMENTER', 'status': 'pass|fail', 'findings': [], 'summary': '...'}"
     result = call_ollama('Writer', ctx, prompt, expected_schema="True")
     new_hash = update_chain(state, result)
     return {"messages": [("ai", result)], "chain_hash": new_hash}
@@ -215,11 +247,15 @@ def supervisor(state: State):
         if content.strip().startswith("{"): all_findings += f"\n{content}"
     
     stack = get_governance_stack()
-    prompt = f"CHIEF SUPERVISOR. STACK:\n{stack}\n\nReview ALL findings below. Reject any without exact code evidence. Output JSON: {{'agent': 'SUPERVISOR', 'status': 'pass|fail', 'approved_findings': [], 'rejected_findings': []}}"
+    prompt = f"CHIEF SUPERVISOR. STACK:\n{stack}\n\nReview ALL findings below. Reject any without exact code evidence. Output JSON: {{'agent': 'SUPERVISOR', 'status': 'pass|fail', 'findings': [], 'approved_findings': [], 'rejected_findings': []}}"
     result = call_ollama('Supervisor', all_findings, prompt, expected_schema="True")
     new_hash = update_chain(state, result)
     # Supervisor approval elevates to TRUSTED
-    trust = "TRUSTED" if '"status":"pass"' in result.lower() else "UNTRUSTED"
+    try:
+        supervisor_result = json.loads(result)
+        trust = "TRUSTED" if supervisor_result.get("status") == "pass" else "UNTRUSTED"
+    except json.JSONDecodeError:
+        trust = "UNTRUSTED"
     return {"messages": [("ai", result)], "current_state": "PATCH_PROPOSED", "chain_hash": new_hash, "trust_level": trust}
 
 def fixer(state: State):
@@ -258,10 +294,14 @@ def validator(state: State):
     # Validates Fixer's output and overall JSON integrity
     last_msg = state["messages"][-1].content
     stack = get_governance_stack()
-    prompt = f"VALIDATOR. STACK:\n{stack}\n\nCheck FIXER output. Is it raw code? No fluff? Output JSON: {{'agent': 'VALIDATOR', 'status': 'pass|fail', 'issue': '...'}}"
+    prompt = f"VALIDATOR. STACK:\n{stack}\n\nCheck FIXER output. Is it raw code? No fluff? Output JSON: {{'agent': 'VALIDATOR', 'status': 'pass|fail', 'findings': [], 'issue': '...'}}"
     result = call_ollama('Validator', last_msg, prompt, expected_schema="True")
     new_hash = update_chain(state, result)
-    trust = "LIMITED" if '"status":"pass"' in result.lower() else "UNTRUSTED"
+    try:
+        validator_result = json.loads(result)
+        trust = "LIMITED" if validator_result.get("status") == "pass" else "UNTRUSTED"
+    except json.JSONDecodeError:
+        trust = "UNTRUSTED"
     return {"messages": [("ai", result)], "current_state": "REVIEW", "chain_hash": new_hash, "trust_level": trust}
 
 def dry_run_validator(state: State):
@@ -278,8 +318,8 @@ def dry_run_validator(state: State):
         if os.name != 'nt':
             result = subprocess.run(["bash", "-n", fixed_path], capture_output=True, text=True)
             if result.returncode != 0:
-                qid = quarantine_artifact("Fixer", result.stderr, "Bash syntax error", "determinism")
-                return {"messages": [("ai", f"DRY_RUN: Syntax error detected. Isolated: {qid}")], "current_state": "LOCKDOWN"}
+                qid = quarantine(result.stderr, "determinism", "Bash syntax error")
+                return {"messages": [("ai", f"DRY_RUN: Syntax error detected. Isolated: {qid['hash']}")], "current_state": "LOCKDOWN"}
         
         msg = "DRY_RUN: Syntax check PASSED. Proceeding to REVIEW."
         new_hash = update_chain(state, msg)
@@ -295,10 +335,14 @@ def reviewer(state: State):
             fixed_code = content
             break
     stack = get_governance_stack()
-    prompt = f"Lead Auditor. STACK:\n{stack}\n\nReview FIXED CODE. Output JSON only. Schema: {{'agent': 'REVIEWER', 'status': 'pass|fail', 'reasoning': '...'}}"
+    prompt = f"Lead Auditor. STACK:\n{stack}\n\nReview FIXED CODE. Output JSON only. Schema: {{'agent': 'REVIEWER', 'status': 'pass|fail', 'findings': [], 'reasoning': '...'}}"
     review_result = call_ollama('Reviewer', fixed_code, prompt, expected_schema="True")
     new_hash = update_chain(state, review_result)
-    trust = "TRUSTED" if '"status":"pass"' in review_result.lower() else "UNTRUSTED"
+    try:
+        parsed_review = json.loads(review_result)
+        trust = "TRUSTED" if parsed_review.get("status") == "pass" else "UNTRUSTED"
+    except json.JSONDecodeError:
+        trust = "UNTRUSTED"
     return {"messages": [("ai", review_result)], "current_state": "APPROVED", "chain_hash": new_hash, "trust_level": trust}
 
 def reporter(state: State):
@@ -332,19 +376,19 @@ def reporter(state: State):
         elif "#!" in content or "set " in content:
             report += "## 🛠️ Proposed Fix\n```bash\n" + content + "\n```\n\n"
 
-    # Generate Canonical Signature for the Report
+    # Generate an integrity digest. A SHA-256 digest is not an identity signature.
     sig_content = f"{state.get('chain_hash')}|{report}"
     signature = hashlib.sha256(sig_content.encode()).hexdigest()
-    report += f"\n---\n### Canonical Signature\n`sha256:{signature}`\n`Status: AUTHORITATIVE`"
+    report += f"\n---\n### Integrity Digest\n`sha256:{signature}`\n`Status: UNSIGNED — independent approval required`"
 
     with open("LATEST_AUDIT_REPORT.md", "w", encoding="utf-8") as f:
         f.write(report)
         
-    msg = "Audit report generated and signed."
+    msg = "Audit report generated with an integrity digest."
     new_hash = update_chain(state, msg)
-    return {"messages": [("ai", msg)], "current_state": "COMPLETE", "chain_hash": new_hash, "trust_level": "AUTHORITATIVE", "lifecycle_stage": "SIGNED"}
+    return {"messages": [("ai", msg)], "current_state": "COMPLETE", "chain_hash": new_hash, "trust_level": "TRUSTED", "lifecycle_stage": "VALIDATED"}
 
-def lockdown(state: State):
+def lockdown(state: State, reason: str = "INTEGRITY_FAILURE"):
     """Emergency halt node for integrity failures. Constitutional terminal state."""
     msg = "SYSTEM LOCKDOWN: Integrity failure detected. Execution halted safely."
     print(msg)
@@ -352,7 +396,7 @@ def lockdown(state: State):
     # Forensic record
     with open("LOCKDOWN_FORENSICS.log", "a", encoding="utf-8") as f:
         import datetime
-        f.write(f"[{datetime.datetime.utcnow()}] LOCKDOWN TRIGGERED. State: {state.get('current_state')}\n")
+        f.write(f"[{datetime.datetime.now(datetime.timezone.utc)}] LOCKDOWN TRIGGERED. Reason: {reason}. State: {state.get('current_state')}\n")
 
     return {
         "current_state": "LOCKDOWN",

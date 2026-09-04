@@ -29,7 +29,7 @@ def test_invalid_json():
 
 def test_prose_leakage():
     print("\n--- 3. PROSE LEAKAGE TEST ---")
-    raw = '{"agent": "test", "status": "ok", "findings": [], "message": "I think this is dangerous"}'
+    raw = '{"agent": "test", "status": "pass", "findings": [], "issue": "I think this is dangerous"}'
     result = validate_output(raw)
     print(f"Result: {result}")
     assert result["status"] == "invalid"
@@ -46,15 +46,28 @@ def test_markdown_leakage():
 
 def test_missing_field():
     print("\n--- 5. MISSING REQUIRED FIELD TEST ---")
-    raw = '{"agent": "test", "status": "ok"}'
+    raw = '{"agent": "test", "status": "pass"}'
     result = validate_output(raw)
     print(f"Result: {result}")
     assert result["status"] == "invalid"
     assert "MISSING_FIELD:findings" in result["reason"]
     print("PASS: Missing 'findings' field caught.")
 
+def test_fake_approval_rejected():
+    print("\n--- 6. FAKE APPROVAL TEST ---")
+    raw = '{"agent":"test","status":"approved","findings":[],"canonical":true}'
+    result = validate_output(raw)
+    assert result["status"] == "invalid"
+    print("PASS: Fake approval rejected.")
+
+def test_findings_type_enforced():
+    print("\n--- 7. FINDINGS TYPE TEST ---")
+    result = validate_output('{"agent":"test","status":"pass","findings":"none"}')
+    assert result["status"] == "invalid"
+    print("PASS: Findings type enforced.")
+
 def test_quarantine_integrity():
-    print("\n--- 6. QUARANTINE INTEGRITY TEST ---")
+    print("\n--- 8. QUARANTINE INTEGRITY TEST ---")
     raw = "CORRUPT DATA"
     result = quarantine(raw, "schema", "Testing quarantine")
     print(f"Quarantine result: {result}")
@@ -63,6 +76,10 @@ def test_quarantine_integrity():
     assert "path" in result
     import os
     assert os.path.exists(result["path"])
+    with open(result["path"], "r", encoding="utf-8") as handle:
+        record = json.load(handle)
+    assert record["raw_content_stored"] is False
+    assert "raw_content" not in record
     print("PASS: Quarantine file created and hash-verified.")
 
 if __name__ == "__main__":
@@ -72,6 +89,8 @@ if __name__ == "__main__":
         test_prose_leakage()
         test_markdown_leakage()
         test_missing_field()
+        test_fake_approval_rejected()
+        test_findings_type_enforced()
         test_quarantine_integrity()
         print("\n✅ CORE DETERMINISM VERIFIED. Trust layer is stable.")
     except Exception as e:

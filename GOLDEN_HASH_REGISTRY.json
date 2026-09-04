@@ -1,16 +1,19 @@
 {
-  "version": "1.0.0-GOLDEN",
-  "status": "AUTHORITATIVE",
-  "verification_date": "2026-05-06",
+  "version": "2.0.0-security-hardening-candidate",
+  "status": "CANDIDATE",
+  "verification_date": "2026-09-04",
   "master_hashes": {
-    "governance_stack": "5dab411fbdd6f445fbddffbcf30f3a5aeb0dcf531559d1860756fd484032cadf",
-    "discoverer_baseline": "e4af70e71d50e0e0a20a2507cae815ad650fddd44e33d47bcbcc0be360b9ac75",
-    "architect_baseline": "e871252ea368fa826f1a69000c5820e853b950640c5d0059158b43feebb0c1de"
+    "governance_stack": "ef92cf871045e7b7f7bd02996d492d278efec10247c8e6c6de4be0a47dd8d852"
   },
   "environment": {
     "model": "llama3",
     "seed": 42,
     "temperature": 0.0
   },
-  "doctrine": "Determinisic. Sovereign. Zero-Trust."
+  "approval": {
+    "signature": null,
+    "required": true,
+    "note": "A hash provides integrity only. Authority requires an independently controlled signature."
+  },
+  "doctrine": "Deterministic. Sovereign. Zero-Trust."
 }

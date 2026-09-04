@@ -1,14 +1,14 @@
 # 🛡️ SafeStack: Sovereign Governance Kernel
 
-**Version: v2.0.0-GOLDEN (Verified Deterministic Baseline)**
+**Version: v2.0.0 security-hardening candidate**
 
 SafeStack is a deterministic, zero-trust security auditing framework designed for autonomous infrastructure. It enforces a strict **Verification Era** protocol where every action is cryptographically linked, audited, and reproducible.
 
 ## 💎 Core Doctrine
 1. **Determinism**: Identical inputs ALWAYS yield identical cryptographic hashes. No environmental drift.
 2. **Zero-Trust Runtime**: Agents are contained within a strict protocol. No magic, no unverified memory.
-3. **Air-Gap Integrity**: Physical blocking of external network exfiltration and non-local protocols.
-4. **Immutability**: The governance core is protected against runtime modification.
+3. **Network isolation prerequisite**: Execution fails closed unless the Linux runtime has no non-loopback default route. Output URL filtering is only an additional policy check.
+4. **Protected write paths**: Application-level guards block writes to governance files. OS-level permissions or immutable mounts remain deployment responsibilities.
 
 ## 🚀 Getting Started
 
@@ -34,13 +34,13 @@ audit <project_path>
 ```
 
 ## 🔒 Verification & Compliance
-This repository contains the **Golden Baseline**. Every release is verified against a 14-point Chaos Test suite and cross-environment Clean-Room rebuilds.
+This repository contains a candidate baseline. A release is eligible for approval only after the test suite, isolated-runtime checks and an independent cryptographic signature pass.
 
-- **Golden Stack Hash**: `5dab411fbdd6f445fbddffbcf30f3a5aeb0dcf531559d1860756fd484032cadf`
+- **Governance Stack Hash**: generated and verified by CI; see `GOLDEN_HASH_REGISTRY.json`
 - **Baseline Discoverer**: `e4af70e71d50e0e0a20a2507cae815ad650fddd44e33d47bcbcc0be360b9ac75`
 
 ## 📜 Doctrine
-*SafeStack v2.0.0-GOLDEN is not "finished forever". It is the first verified deterministic baseline. Any deviation from this standard triggers immediate LOCKDOWN.*
+*No hash or model verdict makes an artifact authoritative by itself. Authority requires an independently controlled signing key and release approval.*
 
 ---
-**Status: AUTHORITATIVE | License: Sovereign SafeStack Protocol**
+**Status: CANDIDATE | License: Sovereign SafeStack Protocol**

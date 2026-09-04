@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=78,<79"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "safestack-audit-system"
+version = "2.0.0"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116,<0.117",
+  "langgraph>=0.6,<0.7",
+  "langgraph-checkpoint-sqlite>=2.0,<3.0",
+  "requests>=2.32,<3.0",
+  "uvicorn>=0.35,<0.36",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pip-audit>=2.9,<3.0",
+  "pytest>=8.4,<9.0",
+]
+
+[tool.setuptools]
+py-modules = [
+  "app",
+  "audit_tool",
+  "canonical_serializer",
+  "path_guard",
+  "quarantine_engine",
+  "server",
+  "strict_mode",
+]

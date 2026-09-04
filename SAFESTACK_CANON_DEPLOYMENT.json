@@ -68,8 +68,8 @@
     {
       "id": "firewall-active",
       "severity": "high",
-      "type": "command_contains",
-      "command": "ufw status",
+      "type": "argv_contains",
+      "argv": ["ufw", "status"],
       "contains": "Status: active"
     },
     {
