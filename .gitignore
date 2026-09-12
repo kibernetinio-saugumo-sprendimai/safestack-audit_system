@@ -9,6 +9,8 @@ ven/
 # Database / State
 *.sqlite
 *.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
 
 # Logs & Forensics
 *.log
@@ -23,6 +25,8 @@ runtime/quarantine/
 # Environment
 .env
 
-# OS
+# IDE / OS
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db
