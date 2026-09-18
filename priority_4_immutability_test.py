@@ -31,7 +31,7 @@ def run_immutability_test():
 
     print("\n=== IMMUTABILITY SUMMARY ===")
     if failures == 0:
-        print("CORE IMMUTABILITY CONFIRMED. PROTECTED ZONES ARE INVIOLABLE.")
+        print("PROTECTED-PATH HELPER CASES PASSED; THIS IS NOT OS-LEVEL IMMUTABILITY.")
     else:
         print(f"FAILED: {failures} immutability bypasses detected!")
         exit(1)

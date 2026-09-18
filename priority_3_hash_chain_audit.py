@@ -70,7 +70,7 @@ def audit_suite():
 
     print(f"\n=== HASH-CHAIN AUDIT SUMMARY ===")
     if failures == 0:
-        print("ALL TAMPERING ATTEMPTS DETECTED. CHAIN IS SECURE.")
+        print("ALL LISTED HASH-CHAIN TAMPERING CASES WERE DETECTED.")
     else:
         print(f"FAILED: {failures} tampering attempts bypassed verification!")
         exit(1)

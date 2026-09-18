@@ -1,6 +1,6 @@
 {
   "version": "1.0.0-GOLDEN",
-  "status": "AUTHORITATIVE",
+  "status": "ARCHIVED_HISTORICAL_BASELINE",
   "verification_date": "2026-05-06",
   "master_hashes": {
     "governance_stack": "5dab411fbdd6f445fbddffbcf30f3a5aeb0dcf531559d1860756fd484032cadf",
@@ -10,7 +10,9 @@
   "environment": {
     "model": "llama3",
     "seed": 42,
-    "temperature": 0.0
+    "temperature": 0.0,
+    "note": "Recorded historical model parameters; current runtime configuration is maintained in app.py."
   },
-  "doctrine": "Determinisic. Sovereign. Zero-Trust."
+  "doctrine": "Determinisic. Sovereign. Zero-Trust.",
+  "scope_note": "These hashes describe a historical baseline only. The runtime does not verify them, and they do not certify the current source."
 }

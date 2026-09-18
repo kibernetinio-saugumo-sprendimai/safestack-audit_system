@@ -5,6 +5,6 @@ result = validate_output(payload)
 print(f"Result: {result}")
 
 if result["reason"] == "AIRGAP_VIOLATION: External URL detected":
-    print("SUCCESS: Air-Gap violation caught!")
+    print("SUCCESS: The listed external URL text was rejected.")
 else:
     print("FAILURE: Air-Gap violation bypassed!")

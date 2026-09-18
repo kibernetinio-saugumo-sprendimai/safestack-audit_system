@@ -11,6 +11,9 @@ ven/
 *.sqlite-shm
 *.sqlite-wal
 *.sqlite-journal
+/runtime/sessions/
+/runtime/LOCKDOWN_FORENSICS.log
+/runtime/LATEST_AUDIT_REPORT.md
 
 # Logs & Forensics
 *.log

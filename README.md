@@ -1,14 +1,13 @@
 # 🛡️ SafeStack: Sovereign Governance Kernel
 
-**Version: v2.0.0-GOLDEN (Verified Deterministic Baseline)**
+**Version: v2.0.0**
 
-SafeStack is a deterministic, zero-trust security auditing framework designed for autonomous infrastructure. It enforces a strict **Verification Era** protocol where every action is cryptographically linked, audited, and reproducible.
+SafeStack is a model-assisted audit tool for Python and Bash projects on POSIX systems with directory-relative, no-follow filesystem operations. It reads source under a configured audit root, sends that source to a local Ollama service, and stores findings and proposed replacement files for human review. It does not apply or deploy proposed changes.
 
 ## 💎 Core Doctrine
-1. **Determinism**: Identical inputs ALWAYS yield identical cryptographic hashes. No environmental drift.
-2. **Zero-Trust Runtime**: Agents are contained within a strict protocol. No magic, no unverified memory.
-3. **Air-Gap Integrity**: Physical blocking of external network exfiltration and non-local protocols.
-4. **Immutability**: The governance core is protected against runtime modification.
+1. The API requires an operator configured `SAFESTACK_API_KEY`.
+2. The default listener is `127.0.0.1:8000`.
+3. Reports include an unsigned integrity digest. This digest does not authenticate an author.
 
 ## 🚀 Getting Started
 
@@ -19,28 +18,34 @@ SafeStack is a deterministic, zero-trust security auditing framework designed fo
 
 ### Installation
 ```bash
-git clone <your-repo-url>
-cd my-langgraph-app
-python -m venv venv
-.\venv\Scripts\activate
+git clone https://github.com/kibernetinio-saugumo-sprendimai/safestack-audit_system.git
+cd safestack-audit_system
+python3 -m venv .venv
+. .venv/bin/activate
 pip install -r requirements.txt
+export SAFESTACK_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
 ```
 
 ### Running an Audit
 ```bash
-python server.py
-# In a separate terminal or via the graph:
-audit <project_path>
+# The path must be inside SAFESTACK_AUDIT_ROOT (defaults to the repository directory).
+curl -H "X-API-Key: $SAFESTACK_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"task":"audit path/to/project"}' http://127.0.0.1:8000/ask
 ```
 
-## 🔒 Verification & Compliance
-This repository contains the **Golden Baseline**. Every release is verified against a 14-point Chaos Test suite and cross-environment Clean-Room rebuilds.
+Start the server once in a terminal with `python server.py`, then run the `curl` command from another terminal. Ollama must already be running locally on port 11434 with the `llama3` model available. Set `SAFESTACK_AUDIT_ROOT` before startup to choose the allowed source tree.
 
-- **Golden Stack Hash**: `5dab411fbdd6f445fbddffbcf30f3a5aeb0dcf531559d1860756fd484032cadf`
-- **Baseline Discoverer**: `e4af70e71d50e0e0a20a2507cae815ad650fddd44e33d47bcbcc0be360b9ac75`
+Audits include at most 100 `.py` and `.sh` files, 24 KB per file and 24 KB total, and at most 10,000 directory entries. Requests exceeding the configured model-input limit stop without a report. The service stops if it encounters an unsafe, changing, or oversized source tree. It omits `.git`, virtual environments, caches, `node_modules`, runtime data, and generated files. These bounds constrain input handling; they do not guarantee that a language model notices every defect.
+
+Runtime databases and outputs are stored below `runtime/`, which the service restricts to the current OS user. Reports are written to a per-audit directory and `runtime/LATEST_AUDIT_REPORT.md`. Proposed files are under that audit's `generated/` directory. Nothing is copied over the audited project. A `failed` API result means the workflow stopped; a `success` result means a report was generated, not that the project is secure.
+
+## 🔒 Verification & Compliance
+This repository contains legacy governance and test documents. Their stated checks are not a claim that all attack paths, environments, or deployments are formally verified.
+
+The runtime's trust labels are workflow metadata. Agent functions share one process, and source text filters are not operating-system network isolation.
 
 ## 📜 Doctrine
-*SafeStack v2.0.0-GOLDEN is not "finished forever". It is the first verified deterministic baseline. Any deviation from this standard triggers immediate LOCKDOWN.*
+*Model-generated findings and proposed replacements require independent review before use.*
 
 ---
-**Status: AUTHORITATIVE | License: Sovereign SafeStack Protocol**
+**License: Sovereign SafeStack Protocol**

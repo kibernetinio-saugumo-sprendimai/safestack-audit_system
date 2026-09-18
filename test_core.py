@@ -73,7 +73,7 @@ if __name__ == "__main__":
         test_markdown_leakage()
         test_missing_field()
         test_quarantine_integrity()
-        print("\n✅ CORE DETERMINISM VERIFIED. Trust layer is stable.")
+        print("\n✅ All listed core checks passed. This is not a complete security verification.")
     except Exception as e:
         print(f"\n❌ DETERMINISM FAILURE: {e}")
         exit(1)

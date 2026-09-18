@@ -19,7 +19,7 @@ PASS = "PASS"
 FAIL = "FAIL"
 ERROR = "ERROR"
 
-EXPECTED_SAFE_DECISIONS = {"invalid", "rejected", "quarantined", "lockdown", "LOCKDOWN", "QUARANTINED", "REJECTED"}
+EXPECTED_SAFE_DECISIONS = {"invalid", "rejected", "quarantined", "lockdown"}
 FORBIDDEN_TRUST_STATUSES = {"valid", "trusted", "trusted_candidate", "approved", "canonical"}
 
 @dataclass(frozen=True)
@@ -49,31 +49,10 @@ def sha256_text(value: str) -> str:
 def canonical_json(data: Any) -> str:
     return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
-def reference_validate_output(raw: str) -> Dict[str, Any]:
-    FORBIDDEN_TOKENS = ["```", "# ", "##", "**", "JSON Output", "Certainly", "I think", "maybe"]
-    REQUIRED_TOP_LEVEL_FIELDS = ["status", "findings"]
-
-    for token in FORBIDDEN_TOKENS:
-        if token in raw:
-            return {"status": "invalid", "reason": "PROTOCOL_VIOLATION"}
-    try:
-        data = json.loads(raw)
-    except Exception:
-        return {"status": "invalid", "reason": "INVALID_JSON"}
-    if not isinstance(data, dict):
-        return {"status": "invalid", "reason": "ROOT_NOT_OBJECT"}
-    for field in REQUIRED_TOP_LEVEL_FIELDS:
-        if field not in data:
-            return {"status": "invalid", "reason": f"MISSING_FIELD:{field}"}
-    return {"status": "valid", "artifact": data}
-
 def load_validator(module_name: str) -> Tuple[Callable[[str], Any], str]:
-    try:
-        module = importlib.import_module(module_name)
-        validator = getattr(module, "validate_output")
-        return validator, f"external:{module_name}.validate_output"
-    except Exception as exc:
-        return reference_validate_output, f"internal_reference_validator ({exc})"
+    module = importlib.import_module(module_name)
+    validator = getattr(module, "validate_output")
+    return validator, f"external:{module_name}.validate_output"
 
 def build_chaos_cases() -> List[ChaosCase]:
     giant_payload = "A" * 1024 * 1024
@@ -109,7 +88,11 @@ def evaluate_case(case: ChaosCase, validator: Callable[[str], Any]) -> ChaosResu
         raw_result = {"status": "error", "reason": str(exc)}
     duration = (time.perf_counter() - start) * 1000
     trusted = determine_trust_created(raw_result)
-    verdict = PASS if trusted == case.expected_trusted_artifact else FAIL
+    observed_status = str(raw_result.get("status", "unknown")).lower() if isinstance(raw_result, dict) else "unknown"
+    decision_matches = (observed_status == "valid" and trusted) if case.expected_trusted_artifact else (
+        observed_status in EXPECTED_SAFE_DECISIONS and not trusted
+    )
+    verdict = PASS if decision_matches else FAIL
     return ChaosResult(case.case_id, case.category, case.description, sha256_text(case.payload), 
                        str(raw_result.get("status", "unknown")), trusted, verdict, "Observed behavior", raw_result, round(duration, 3))
 
@@ -121,7 +104,7 @@ def main():
     for r in results:
         print(f"[{r.verdict}] {r.case_id} {r.category} | trust={r.trusted_artifact_created}")
     if passed == len(results):
-        print("\nCORE IS CHAOS-PROOF.")
+        print("\nALL LISTED PROTOCOL REGRESSION CASES PASSED.")
         return 0
     print("\nCORE FAILURE DETECTED.")
     return 1

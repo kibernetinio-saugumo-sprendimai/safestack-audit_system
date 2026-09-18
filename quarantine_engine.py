@@ -1,53 +1,22 @@
-from pathlib import Path
 import hashlib
-import time
 import json
-import os
+import secrets
+import time
+from secure_io import write_private
 
-QUARANTINE_ROOT = Path("runtime/quarantine")
 ALLOWED_CATEGORIES = {"schema", "protocol", "security", "runtime", "determinism"}
 
+
 def quarantine(raw: str, category: str, reason: str = "unknown"):
-    """Preserves invalid runtime artifacts in isolated storage."""
+    """Preserve invalid artifacts without following output-path links."""
     if category not in ALLOWED_CATEGORIES:
         raise ValueError("invalid quarantine category")
-    if len(raw) > 2_000_000:
+    if not isinstance(raw, str) or len(raw.encode("utf-8")) > 2_000_000:
         raise ValueError("quarantine artifact is too large")
-    ts = time.time_ns()
+    timestamp = time.time_ns()
     digest = hashlib.sha256(raw.encode()).hexdigest()
-
-    target = QUARANTINE_ROOT / category
-    target.mkdir(parents=True, exist_ok=True)
-    if target.is_symlink():
-        raise ValueError("quarantine category must not be a symlink")
-    target = target.resolve(strict=True)
-    target.relative_to(Path.cwd().resolve())
-
-    filename = f"{ts}_{digest[:8]}.json"
-    path = target / filename
-
-    record = {
-        "timestamp": ts,
-        "category": category,
-        "reason": reason,
-        "artifact_hash": f"sha256:{digest}",
-        "raw_content": raw
-    }
-
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    fd = os.open(path, flags, 0o600)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(record, f, indent=2)
-    except Exception:
-        try: os.close(fd)
-        except OSError: pass
-        raise
-
-    return {
-        "status": "quarantined",
-        "hash": digest,
-        "path": str(path)
-    }
+    record = {"timestamp": timestamp, "category": category, "reason": reason,
+              "artifact_hash": f"sha256:{digest}", "raw_content": raw}
+    name = f"quarantine/{category}/{timestamp}_{secrets.token_hex(8)}.json"
+    path = write_private(name, json.dumps(record, indent=2, allow_nan=False), exclusive=True)
+    return {"status": "quarantined", "hash": digest, "path": path}
