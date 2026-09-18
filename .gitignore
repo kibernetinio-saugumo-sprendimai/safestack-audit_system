@@ -8,6 +8,8 @@ ven/
 
 # Database / State
 *.sqlite
+*.sqlite-shm
+*.sqlite-wal
 *.sqlite-journal
 
 # Logs & Forensics

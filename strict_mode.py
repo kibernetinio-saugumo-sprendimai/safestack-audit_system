@@ -38,6 +38,8 @@ REQUIRED_FIELDS = [
 
 def validate_output(raw: str):
     """Primary protocol enforcement gate."""
+    if not isinstance(raw, str) or len(raw) > 250_000:
+        return reject("OUTPUT_TOO_LARGE")
     try:
         data = json.loads(raw)
     except Exception:
@@ -46,6 +48,18 @@ def validate_output(raw: str):
     for field in REQUIRED_FIELDS:
         if field not in data:
             return reject(f"MISSING_FIELD:{field}")
+    if not isinstance(data["agent"], str) or not isinstance(data["status"], str) or not isinstance(data["findings"], list):
+        return reject("INVALID_FIELD_TYPES")
+    if data["status"] not in {"pass", "fail", "ok", "quarantined", "error"}:
+        return reject("INVALID_STATUS")
+    if len(data["findings"]) > 500:
+        return reject("TOO_MANY_FINDINGS")
+    for finding in data["findings"]:
+        if not isinstance(finding, dict):
+            return reject("INVALID_FINDING")
+        required = {"id", "issue", "evidence", "severity"}
+        if not required.issubset(finding) or not all(isinstance(finding[k], str) for k in required):
+            return reject("INVALID_FINDING_SCHEMA")
 
     if check_airgap_violation(raw):
         return reject("AIRGAP_VIOLATION: External URL detected")

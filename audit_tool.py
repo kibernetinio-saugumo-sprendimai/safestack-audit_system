@@ -5,17 +5,26 @@ import re
 import shutil
 import subprocess
 import sys
-from datetime import datetime
+import shlex
+from datetime import datetime, timezone
 
 def load_canon(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def run_command(command: str) -> str:
+    # Canon commands are data, never shell programs.  Parsing and executing
+    # without a shell prevents metacharacters from becoming host commands.
+    try:
+        argv = shlex.split(command)
+    except ValueError as e:
+        return f"ERROR: invalid command: {e}"
+    if not argv or any(re.search(r"[;&|<>`$()]", token) for token in argv):
+        return "ERROR: command rejected"
     try:
         result = subprocess.run(
-            command,
-            shell=True,
+            argv,
+            shell=False,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -62,7 +71,7 @@ def main():
     results = []
     failed_critical = False
     print(f"# SafeStack Deployment Audit")
-    print(f"Time: {datetime.utcnow().isoformat()}Z")
+    print(f"Time: {datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')}")
     print(f"Canon: {canon.get('schema')} / {canon.get('version')}\n")
     for rule in canon.get("checks", []):
         passed = run_check(rule)

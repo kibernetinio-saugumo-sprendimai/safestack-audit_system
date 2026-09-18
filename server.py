@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, Header
+from pydantic import BaseModel, Field
 import uvicorn
 import os
 import sys
+import secrets
 
 try:
     from app import app
@@ -16,23 +17,30 @@ except Exception as e:
 server = FastAPI(title="SafeStack AI Agents API")
 
 class TaskRequest(BaseModel):
-    task: str
-    thread_id: str = "vscode_session"
+    task: str = Field(min_length=1, max_length=4000)
+    thread_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 @server.get("/")
 async def root():
     return {"status": "online", "docs": "/docs"}
 
 @server.post("/ask")
-async def run_team(request: TaskRequest):
-    config = {"configurable": {"thread_id": request.thread_id}}
+async def run_team(request: TaskRequest, x_api_key: str | None = Header(default=None)):
+    # A client never chooses a checkpoint namespace; this prevents cross-session
+    # state access through guessed thread IDs.
+    thread_id = secrets.token_urlsafe(24)
+    expected_key = os.environ.get("SAFESTACK_API_KEY")
+    if not expected_key:
+        raise HTTPException(status_code=503, detail="API authentication is not configured")
+    if not secrets.compare_digest(x_api_key or "", expected_key):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    config = {"configurable": {"thread_id": thread_id}}
     inputs = {
         "messages": [("user", request.task)], 
         "project_path": "", 
         "project_context": "",
         "memories": ""
     }
-    os.makedirs("generated_code", exist_ok=True)
     results = []
     try:
         for event in app.stream(inputs, config=config):
@@ -53,12 +61,12 @@ async def run_team(request: TaskRequest):
                 })
         return {
             "status": "success", 
-            "session_id": inputs.get("session_id", "N/A"),
+            "session_id": thread_id,
             "results": results
         }
     except Exception as e:
         print(f"Klaida: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="audit execution failed")
 
 if __name__ == "__main__":
     print("\n" + "="*40)

@@ -4,6 +4,7 @@ import requests
 import re
 import hashlib
 import json
+from pathlib import Path
 from datetime import datetime
 from typing import Annotated, TypedDict
 from langgraph.graph import StateGraph, END
@@ -18,6 +19,41 @@ from quarantine_engine import quarantine
 # --- QUARANTINE CONSTANTS ---
 QUARANTINE_BASE = "runtime/quarantine"
 CATEGORIES = ["schema", "protocol", "security", "runtime", "determinism"]
+PROJECT_ROOT = Path(os.environ.get("SAFESTACK_AUDIT_ROOT", os.getcwd())).resolve()
+MAX_SOURCE_BYTES = 1_000_000
+
+def resolve_project_path(raw_path: str) -> Path:
+    """Resolve an audit target inside the explicitly configured audit root."""
+    candidate = Path(raw_path).expanduser()
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    resolved = candidate.resolve(strict=True)
+    try:
+        resolved.relative_to(PROJECT_ROOT)
+    except ValueError as e:
+        raise PermissionError("audit target is outside SAFESTACK_AUDIT_ROOT") from e
+    if not resolved.is_dir():
+        raise NotADirectoryError("audit target must be a directory")
+    return resolved
+
+def write_generated_file(path: str, content: str) -> None:
+    """Write generated output without following an attacker-created symlink."""
+    target = Path(path)
+    target.parent.mkdir(mode=0o700, exist_ok=True)
+    parent = target.parent.resolve(strict=True)
+    parent.relative_to(Path.cwd().resolve())
+    target = parent / target.name
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(target, flags, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(content)
+    except Exception:
+        try: os.close(fd)
+        except OSError: pass
+        raise
 
 # 1. State
 class State(TypedDict):
@@ -65,6 +101,7 @@ def call_ollama(role: str, code: str, custom_prompt: str, expected_schema: str =
     }
     try:
         response = requests.post(url, json=payload, timeout=300)
+        response.raise_for_status()
         content = response.json()['message']['content'].strip()
         
         # 1. TRANSPORT & PROTOCOL & SCHEMA VALIDATION (Using strict_mode)
@@ -85,19 +122,24 @@ def call_ollama(role: str, code: str, custom_prompt: str, expected_schema: str =
                     return json.dumps({"agent": role, "status": "quarantined", "quarantine_id": qid["hash"]})
 
         return content
-    except Exception as e: 
-        return json.dumps({"agent": role, "status": "error", "reason": str(e)})
+    except Exception:
+        return json.dumps({"agent": role, "status": "error", "reason": "local model request failed"})
 
 def read_project_files(path: str):
-    path = os.path.normpath(path.replace('"', '').replace("'", "").strip())
-    if not os.path.exists(path): return "ERROR: PATH_NOT_FOUND", ""
-    for root, _, files in os.walk(path):
-        if any(x in root for x in ['venv', '.git', '__pycache__']): continue
+    try:
+        project = resolve_project_path(path.replace('"', '').replace("'", "").strip())
+    except (OSError, PermissionError):
+        return "ERROR: PATH_NOT_FOUND", ""
+    for root, dirs, files in os.walk(project, followlinks=False):
+        dirs[:] = [d for d in dirs if d not in {"venv", ".venv", ".git", "__pycache__"}]
         for file in sorted(files): # Deterministic sort
             if file.endswith(('.sh', '.py')):
                 try:
                     full_path = os.path.join(root, file)
-                    with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    source = Path(full_path).resolve(strict=True)
+                    source.relative_to(PROJECT_ROOT)
+                    if source.stat().st_size > MAX_SOURCE_BYTES: continue
+                    with source.open('r', encoding='utf-8', errors='ignore') as f:
                         return f"FILE: {file}\n{f.read()}", file
                 except: continue
     return "ERROR: NO_SCRIPTS", ""
@@ -248,9 +290,11 @@ def fixer(state: State):
         print(f"SECURITY BREACH: {e}")
         return lockdown(state)
 
-    os.makedirs("generated_code", exist_ok=True)
-    with open(target_path, "w", encoding="utf-8") as f:
-        f.write(fixed_code)
+    try:
+        write_generated_file(target_path, fixed_code)
+    except OSError as e:
+        return lockdown({**state, "messages": [(
+            "ai", f"SECURE_WRITE_FAILED: {e.__class__.__name__}") ]})
         
     return {"messages": [("ai", fixed_code)], "current_state": "DRY_RUN", "chain_hash": new_hash}
 
