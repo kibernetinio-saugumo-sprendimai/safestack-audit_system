@@ -9,6 +9,25 @@ SafeStack is a model-assisted audit tool for Python and Bash projects on POSIX s
 2. The default listener is `127.0.0.1:8000`.
 3. Reports include an unsigned integrity digest. This digest does not authenticate an author.
 
+### Per-project signing keys
+
+The repository includes `key_registry.py` for isolated Ed25519 project keys. The
+public registry may be published, but the root private key and every project
+private key must remain offline and outside Git. The root key signs the registry;
+revoking one project key does not revoke any other project.
+
+```bash
+python3 key_registry.py init-root --registry public-project-keys.json --private-out /offline/root.key
+python3 key_registry.py add-project --registry public-project-keys.json --root-private /offline/root.key --project-id project-001 --private-out /offline/project-001.key
+python3 key_registry.py revoke-project --registry public-project-keys.json --root-private /offline/root.key --project-id project-001
+python3 key_registry.py verify --registry public-project-keys.json
+```
+
+Keep offline root-key recovery material on paper or another physically separate
+backup, but use an offline device or hardware token for signing. Do not paste
+private key bytes into the repository, issue tracker, logs, or chat. The public
+registry is not trusted until its root signature verifies.
+
 ## 🚀 Getting Started
 
 ### Prerequisites

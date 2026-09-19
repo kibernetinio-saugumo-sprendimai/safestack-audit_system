@@ -27,6 +27,7 @@ runtime/quarantine/
 
 # Environment
 .env
+*.key
 
 # OS
 .DS_Store
