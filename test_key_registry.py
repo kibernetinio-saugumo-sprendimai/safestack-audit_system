@@ -38,6 +38,19 @@ class KeyRegistryTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 key_registry._write_secret(path, b"y" * 32)
 
+    def test_cli_sign_and_verify_artifact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root.key"
+            registry_path = Path(tmp) / "registry.json"
+            project = Path(tmp) / "project.key"
+            artifact = Path(tmp) / "artifact.bin"
+            signature = Path(tmp) / "artifact.sig.json"
+            self.assertEqual(key_registry.main(["init-root", "--registry", str(registry_path), "--private-out", str(root)]), 0)
+            self.assertEqual(key_registry.main(["add-project", "--registry", str(registry_path), "--root-private", str(root), "--project-id", "p1", "--private-out", str(project)]), 0)
+            artifact.write_bytes(b"artifact")
+            self.assertEqual(key_registry.main(["sign-artifact", "--registry", str(registry_path), "--project-private", str(project), "--project-id", "p1", "--artifact", str(artifact), "--signature-out", str(signature)]), 0)
+            self.assertEqual(key_registry.main(["verify-artifact", "--registry", str(registry_path), "--artifact", str(artifact), "--signature", str(signature)]), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

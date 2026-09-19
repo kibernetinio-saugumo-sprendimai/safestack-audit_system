@@ -21,6 +21,8 @@ python3 key_registry.py init-root --registry public-project-keys.json --private-
 python3 key_registry.py add-project --registry public-project-keys.json --root-private /offline/root.key --project-id project-001 --private-out /offline/project-001.key
 python3 key_registry.py revoke-project --registry public-project-keys.json --root-private /offline/root.key --project-id project-001
 python3 key_registry.py verify --registry public-project-keys.json
+python3 key_registry.py sign-artifact --registry public-project-keys.json --project-private /offline/project-001.key --project-id project-001 --artifact release.tar --signature-out release.tar.sig.json
+python3 key_registry.py verify-artifact --registry public-project-keys.json --artifact release.tar --signature release.tar.sig.json
 ```
 
 Keep offline root-key recovery material on paper or another physically separate

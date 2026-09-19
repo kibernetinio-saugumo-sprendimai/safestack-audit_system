@@ -212,6 +212,8 @@ def main(argv: list[str] | None = None) -> int:
     add = sub.add_parser("add-project"); add.add_argument("--registry", type=Path, required=True); add.add_argument("--root-private", type=Path, required=True); add.add_argument("--project-id", required=True); add.add_argument("--private-out", type=Path, required=True)
     revoke = sub.add_parser("revoke-project"); revoke.add_argument("--registry", type=Path, required=True); revoke.add_argument("--root-private", type=Path, required=True); revoke.add_argument("--project-id", required=True)
     verify = sub.add_parser("verify"); verify.add_argument("--registry", type=Path, required=True)
+    sign = sub.add_parser("sign-artifact"); sign.add_argument("--registry", type=Path, required=True); sign.add_argument("--project-private", type=Path, required=True); sign.add_argument("--project-id", required=True); sign.add_argument("--artifact", type=Path, required=True); sign.add_argument("--signature-out", type=Path, required=True)
+    verify_art = sub.add_parser("verify-artifact"); verify_art.add_argument("--registry", type=Path, required=True); verify_art.add_argument("--artifact", type=Path, required=True); verify_art.add_argument("--signature", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "init-root":
@@ -222,6 +224,11 @@ def main(argv: list[str] | None = None) -> int:
             _write_secret(args.private_out, _private_bytes(project)); _write_public(args.registry, updated); print(f"added project {args.project_id}")
         elif args.command == "revoke-project":
             _write_public(args.registry, revoke_project(_load(args.registry), _read_private(args.root_private), args.project_id)); print(f"revoked project {args.project_id}")
+        elif args.command == "sign-artifact":
+            signature = sign_artifact(_load(args.registry), args.project_id, args.artifact.read_bytes(), _read_private(args.project_private))
+            _write_public(args.signature_out, signature); print(f"signed {args.artifact} as {args.project_id}")
+        elif args.command == "verify-artifact":
+            verify_artifact(_load(args.registry), json.loads(args.signature.read_text(encoding="utf-8")), args.artifact.read_bytes()); print("artifact signature valid")
         else:
             verify_registry(_load(args.registry)); print("registry signature valid")
         return 0
