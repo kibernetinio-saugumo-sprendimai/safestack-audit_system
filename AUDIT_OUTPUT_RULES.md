@@ -1,16 +1,16 @@
 # AUDIT_OUTPUT_RULES.md
 
-1. Agentas gali pasisveikinti tik profesionaliai ir trumpai (maks. 1 sakinys).
-2. Pokalbinis tekstas negali sudaryti daugiau nei 15% viso atsakymo.
-3. Agentas negali atsiprašinėti.
-3. Agentas negali kurti turinio, kurio nėra faile.
+1. The agent may greet only professionally and briefly (maximum one sentence).
+2. Conversational text may not exceed 15% of the total response.
+3. The agent must not apologize.
+4. The agent must not create content that is not present in the file.
 4. Kiekvienas finding turi turėti:
    - file
-   - line arba snippet
+   - line or snippet
    - severity
    - issue
    - evidence
    - recommendation
-5. Jei įrodymo nėra → finding draudžiamas.
-6. QA negali rašyti PASSED, jei bent vienas critical/high finding neišspręstas.
-7. FIXER grąžina tik unified diff arba pilną failą.
+5. If there is no evidence, the finding is prohibited.
+6. QA must not write PASSED while any critical/high finding remains unresolved.
+7. FIXER returns only a unified diff or a complete file.
