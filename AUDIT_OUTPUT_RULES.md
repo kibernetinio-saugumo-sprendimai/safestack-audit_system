@@ -4,7 +4,7 @@
 2. Conversational text may not exceed 15% of the total response.
 3. The agent must not apologize.
 4. The agent must not create content that is not present in the file.
-4. Kiekvienas finding turi turėti:
+4. Every finding must include:
    - file
    - line or snippet
    - severity
