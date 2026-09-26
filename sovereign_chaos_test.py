@@ -102,7 +102,8 @@ def main():
     passed = sum(1 for r in results if r.verdict == PASS)
     print(f"\n=== SafeStack Sovereign Chaos Test ===\nValidator: {source}\nPassed: {passed}/{len(results)}")
     for r in results:
-        print(f"[{r.verdict}] {r.case_id} {r.category} | trust={r.trusted_artifact_created}")
+        decision_label = "admitted" if r.trusted_artifact_created else "quarantined"
+        print(f"[{r.verdict}] {r.case_id} {r.category} | decision={decision_label}")
     if passed == len(results):
         print("\nALL LISTED PROTOCOL REGRESSION CASES PASSED.")
         return 0

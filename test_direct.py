@@ -10,7 +10,7 @@ def test():
     }
     try:
         print("Siunčiama tiesioginė užklausa į Ollama...")
-        response = requests.post(url, json=data)
+        response = requests.post(url, json=data, timeout=10)
         print("Atsakymas gautas:", response.json().get("response"))
     except Exception as e:
         print("Klaida:", e)
