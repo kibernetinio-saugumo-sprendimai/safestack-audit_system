@@ -41,5 +41,10 @@ jobs:
           python test_airgap.py
           python test_airgap_full.py
 
+      - name: Run API and graph compatibility regressions
+        run: |
+          python test_api_auth.py
+          python test_security_regressions.py
+
       - name: Run Dependency Vulnerability Audit (pip-audit)
         run: pip-audit
