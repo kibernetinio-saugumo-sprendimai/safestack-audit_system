@@ -11,14 +11,27 @@ import audit_tool
 
 
 class DeploymentCliTests(unittest.TestCase):
-    def test_failed_command_cannot_satisfy_expected_output(self):
-        output, status = audit_tool.run_command("python3 -m module_that_does_not_exist_safestack")
-        self.assertNotEqual(status, 0)
-        self.assertIn("No module named", output)
-        self.assertFalse(audit_tool.check_command_contains({
-            "command": "python3 -m module_that_does_not_exist_safestack",
-            "contains": "No module named",
-        }))
+    def test_unlisted_program_never_executes(self):
+        with patch.object(audit_tool.subprocess, "run") as run:
+            for command in ("python3 -c pass", "sh -c true", "ufw disable", "ufw status verbose"):
+                self.assertEqual(audit_tool.run_command(command), ("", 2))
+            run.assert_not_called()
+
+    def test_allowed_command_uses_fixed_path_and_clean_environment(self):
+        with patch.object(audit_tool.subprocess, "run") as run:
+            run.return_value.stdout = "Status: active\n"
+            run.return_value.returncode = 0
+            self.assertEqual(audit_tool.run_command("ufw status"), ("Status: active", 0))
+            self.assertEqual(run.call_args.args[0], ("/usr/sbin/ufw", "status"))
+            self.assertEqual(run.call_args.kwargs["env"]["LC_ALL"], "C")
+            self.assertEqual(run.call_args.kwargs["cwd"], "/")
+            self.assertFalse(run.call_args.kwargs["shell"])
+
+    def test_failed_allowed_command_is_an_error(self):
+        with patch.object(audit_tool.subprocess, "run") as run:
+            run.return_value.stdout = "permission denied"
+            run.return_value.returncode = 1
+            self.assertIsNone(audit_tool.check_command_contains({"command": "ufw status", "contains": "permission denied"}))
 
     def test_shell_metacharacters_remain_rejected(self):
         self.assertEqual(audit_tool.run_command("echo safe ; false"), ("", 2))

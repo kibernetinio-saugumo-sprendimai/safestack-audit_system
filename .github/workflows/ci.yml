@@ -44,6 +44,7 @@ jobs:
 
       - name: Run API and graph compatibility regressions
         run: |
+          python test_deployment_cli.py
           python test_api_auth.py
           python test_security_regressions.py
 
