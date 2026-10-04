@@ -13,22 +13,29 @@ def load_canon(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
+ALLOWED_COMMANDS = {("ufw", "status"): ("/usr/sbin/ufw", "status")}
+
 def run_command(command: str) -> Tuple[str, int]:
-    # Canon commands are operator-trusted configuration. Never invoke a shell.
+    # Only exact read-only commands are executable; canon cannot select arbitrary programs.
     try:
         argv = shlex.split(command)
     except ValueError as e:
         return "", 2
     if not argv or any(re.search(r"[;&|<>`$()]", token) for token in argv):
         return "", 2
+    executable = ALLOWED_COMMANDS.get(tuple(argv))
+    if executable is None:
+        return "", 2
     try:
         result = subprocess.run(
-            argv,
+            executable,
             shell=False,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            timeout=10
+            timeout=10,
+            cwd="/",
+            env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C", "LANG": "C"}
         )
         return result.stdout.strip(), result.returncode
     except (OSError, subprocess.SubprocessError):
