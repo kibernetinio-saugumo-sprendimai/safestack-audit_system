@@ -3,5 +3,5 @@ fastapi>=0.115,<1
 uvicorn[standard]>=0.54.0,<1
 requests>=2.31,<3
 cryptography>=50.0.1,<51
-langgraph>=0.2,<2
+langgraph>=1.2.12,<2
 langgraph-checkpoint-sqlite>=2,<4

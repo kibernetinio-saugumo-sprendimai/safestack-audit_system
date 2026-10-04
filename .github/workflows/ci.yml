@@ -28,6 +28,7 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pip-audit
+          python -m pip check
 
       - name: Bytecode compilation check
         run: python -m compileall -q .
