@@ -53,7 +53,7 @@ class DeploymentCliTests(unittest.TestCase):
                                                "contains": "x", "expected": False}))
 
     def test_expected_false_is_supported(self):
-        with patch.object(audit_tool.os.path, "exists", return_value=False):
+        with patch.object(audit_tool.os, "stat", side_effect=FileNotFoundError):
             self.assertTrue(audit_tool.run_check({"type": "file_exists", "path": "/missing", "expected": False}))
 
     def test_main_reports_exit_status_and_canon_metadata(self):

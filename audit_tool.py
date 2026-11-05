@@ -13,7 +13,7 @@ def load_canon(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-ALLOWED_COMMANDS = {("ufw", "status"): ("/usr/sbin/ufw", "status")}
+ALLOWED_COMMANDS = {("ufw", "status"): ("/usr/sbin/ufw", "status"), ("sshd", "-T"): ("/usr/sbin/sshd", "-T")}
 
 def run_command(command: str) -> Tuple[str, int]:
     # Only exact read-only commands are executable; canon cannot select arbitrary programs.
@@ -42,13 +42,16 @@ def run_command(command: str) -> Tuple[str, int]:
         return "", 2
 
 def check_file_exists(rule: dict) -> bool:
-    return os.path.exists(rule["path"])
+    try:
+        os.stat(rule["path"])
+        return True
+    except FileNotFoundError:
+        return False
 
 def check_file_regex(rule: dict) -> bool:
     path = rule["path"]
     pattern = rule["pattern"]
-    if not os.path.exists(path): return False
-    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+    with open(path, "r", encoding="utf-8") as f:
         content = f.read()
     return re.search(pattern, content, re.MULTILINE) is not None
 
@@ -58,6 +61,13 @@ def check_command_contains(rule: dict) -> Optional[bool]:
         # A failed command is an execution error, never an observed false value.
         return None
     return rule["contains"] in output
+
+def check_command_regex(rule: dict) -> Optional[bool]:
+    output, returncode = run_command(rule["command"])
+    if returncode != 0:
+        return None
+    return re.search(rule["pattern"], output, re.MULTILINE) is not None
+
 
 def check_disk_free_mb(rule: dict) -> bool:
     usage = shutil.disk_usage(rule["path"])
@@ -70,6 +80,7 @@ def run_check(rule: dict) -> bool:
         if check_type == "file_exists": result = check_file_exists(rule)
         elif check_type == "file_regex": result = check_file_regex(rule)
         elif check_type == "command_contains": result = check_command_contains(rule)
+        elif check_type == "command_regex": result = check_command_regex(rule)
         elif check_type == "disk_free_mb": result = check_disk_free_mb(rule)
         else: return False
         if result is None:
@@ -82,14 +93,34 @@ def run_check(rule: dict) -> bool:
 def validate_canon(canon: object) -> list:
     if not isinstance(canon, dict) or not isinstance(canon.get("checks"), list) or not canon["checks"]:
         raise ValueError("canon must contain a nonempty checks list")
-    supported = {"file_exists", "file_regex", "command_contains", "disk_free_mb"}
+    supported = {"file_exists", "file_regex", "command_contains", "command_regex", "disk_free_mb"}
+    identifiers = set()
     for rule in canon["checks"]:
         if not isinstance(rule, dict) or not isinstance(rule.get("id"), str) or not rule["id"].strip():
             raise ValueError("each check requires a nonempty id")
+        if rule["id"] in identifiers:
+            raise ValueError("check identifiers must be unique")
+        identifiers.add(rule["id"])
         if rule.get("type") not in supported or rule.get("severity") not in {"critical", "high", "medium", "low", "info"}:
             raise ValueError("check uses an unsupported type or severity")
         if not isinstance(rule.get("expected", True), bool):
             raise ValueError("check expected value must be boolean")
+        kind = rule["type"]
+        fields = {
+            "file_exists": ("path",), "file_regex": ("path", "pattern"),
+            "command_contains": ("command", "contains"), "command_regex": ("command", "pattern"),
+            "disk_free_mb": ("path",),
+        }[kind]
+        for field in fields:
+            if not isinstance(rule.get(field), str) or not rule[field].strip() or "\0" in rule[field]:
+                raise ValueError(f"{kind} requires a nonempty, NUL-free {field}")
+        if "pattern" in fields:
+            try:
+                re.compile(rule["pattern"])
+            except re.error as error:
+                raise ValueError("invalid check regular expression") from error
+        if kind == "disk_free_mb" and (type(rule.get("minimum_mb")) is not int or rule["minimum_mb"] < 0):
+            raise ValueError("minimum_mb must be a nonnegative integer")
     return canon["checks"]
 
 def main():

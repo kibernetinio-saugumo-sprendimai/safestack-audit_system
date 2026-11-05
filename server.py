@@ -9,6 +9,7 @@ import uvicorn
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
+from starlette.responses import JSONResponse
 
 try:
     from app import app
@@ -16,7 +17,45 @@ except ImportError as error:
     print(f"\n[ERROR] SafeStack application could not be imported: {error}")
     raise
 
+MAX_REQUEST_BYTES = 65_536
+
+
+class AuditBodyLimit:
+    """Bound actual streamed bytes before FastAPI buffers or parses JSON."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope.get("path") != "/ask" or scope.get("method") != "POST":
+            return await self.app(scope, receive, send)
+        chunks = []
+        total = 0
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            chunk = message.get("body", b"")
+            total += len(chunk)
+            if total > MAX_REQUEST_BYTES:
+                return await JSONResponse({"detail": "request body too large"}, status_code=413)(scope, receive, send)
+            chunks.append(chunk)
+            if not message.get("more_body", False):
+                break
+        body = b"".join(chunks)
+        delivered = False
+
+        async def replay():
+            nonlocal delivered
+            if not delivered:
+                delivered = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return await receive()
+
+        await self.app(scope, replay, send)
+
+
 server = FastAPI(title="SafeStack AI Agents API")
+server.add_middleware(AuditBodyLimit)
 
 # A single SQLite checkpointer and bounded model calls support one active graph.
 # Reject overload instead of queuing attacker-controlled trees indefinitely.
@@ -61,7 +100,7 @@ async def run_team(request: TaskRequest, x_api_key: str | None = Header(default=
     expected_key = os.environ.get("SAFESTACK_API_KEY")
     if not expected_key:
         raise HTTPException(status_code=503, detail="API authentication is not configured")
-    if not secrets.compare_digest(x_api_key or "", expected_key):
+    if not secrets.compare_digest((x_api_key or "").encode("utf-8"), expected_key.encode("utf-8")):
         raise HTTPException(status_code=401, detail="unauthorized")
     if not _audit_slot.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="an audit is already running")
