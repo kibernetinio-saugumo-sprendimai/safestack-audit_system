@@ -1,140 +1,152 @@
-"""Strict, typed validation for agent-produced audit JSON."""
-
-from __future__ import annotations
-
+"""Validate model envelopes; these content rules are not a network sandbox."""
 import ipaddress
 import json
 import re
-from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
-MAX_OUTPUT_BYTES = 256 * 1024
-MAX_FINDINGS = 100
-ALLOWED_AGENTS = {
-    "architect",
-    "coder",
-    "developer",
-    "security",
-    "documenter",
-    "writer",
-    "supervisor",
-    "validator",
-    "reviewer",
-    "test",
+FORBIDDEN_TOKENS = ["```", "# ", "Certainly", "I think", "maybe", "I apologize",
+                    "Here is the", "Please find", "Note:", "**"]
+REQUIRED_FIELDS = ["agent", "status", "findings"]
+SEVERITIES = {"critical", "high", "medium", "low", "info"}
+ROLE_FIELDS = {
+    "ARCHITECT": {}, "CODER": {}, "SECURITY": {},
+    "DOCUMENTER": {"summary": str},
+    "SUPERVISOR": {"approved_findings": list, "rejected_findings": list},
+    "FIXER": {"patches": list},
+    "VALIDATOR": {"issue": str}, "REVIEWER": {"reasoning": str},
 }
-ALLOWED_STATUSES = {"pass", "fail"}
-ALLOWED_FIELDS = {
-    "agent",
-    "status",
-    "findings",
-    "approved_findings",
-    "rejected_findings",
-    "summary",
-    "reasoning",
-    "issue",
-}
-ALLOWED_SEVERITIES = {"critical", "high", "medium", "low", "info"}
-FORBIDDEN_TOKENS = ["```", "# ", "Certainly", "I think", "maybe", "I apologize", "Here is the", "Please find", "Note:", "**"]
-URL_PATTERN = re.compile(r"(?:https?|ftp|ssh|ws|wss|telnet)://[^\s\"'\}]+", re.IGNORECASE)
-IP_PATTERN = re.compile(r"(?<![A-Za-z0-9])(?:\d{1,3}\.){3}\d{1,3}(?![A-Za-z0-9])")
 
 
-def check_external_reference(raw: str) -> bool:
-    """Reject non-loopback network references in model output.
+def _unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
 
-    This is an output policy, not a substitute for OS-level network isolation.
-    """
-    for value in URL_PATTERN.findall(raw):
-        host = urlparse(value).hostname
-        if host not in {"localhost", "127.0.0.1", "::1"}:
-            return True
-    for value in IP_PATTERN.findall(raw):
+
+def _invalid_constant(value):
+    raise ValueError("nonfinite JSON number")
+
+
+def parse_json(raw):
+    return json.loads(raw, object_pairs_hook=_unique_object, parse_constant=_invalid_constant)
+
+
+def check_airgap_violation(raw: str) -> bool:
+    """Check exact destinations in decoded text, never URL substrings."""
+    for match in re.findall(r"[a-z][a-z0-9+.-]*://[^\s\"'<>]+", raw, re.I):
         try:
-            if not ipaddress.ip_address(value).is_loopback:
+            parsed = urlsplit(match.rstrip(".,;)}"))
+            host = parsed.hostname
+            if parsed.username is not None or parsed.password is not None:
+                return True
+            if host == "localhost":
+                continue
+            if host is None or not ipaddress.ip_address(host).is_loopback:
+                return True
+        except ValueError:
+            return True
+    for value in re.findall(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])|\[[0-9a-f:]+\]", raw, re.I):
+        try:
+            if not ipaddress.ip_address(value.strip("[]")).is_loopback:
                 return True
         except ValueError:
             return True
     return False
 
 
-def validate_finding(finding: Any, index: int) -> str | None:
-    if not isinstance(finding, dict):
-        return f"FINDING_NOT_OBJECT:{index}"
+def _strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list):
+        for item in value:
+            yield from _strings(item)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            # Quoted source and proposed code are inert data, not narrative.
+            if key not in {"evidence", "content"}:
+                yield from _strings(item)
+
+
+def valid_finding(finding):
     required = {"id", "issue", "evidence", "severity"}
-    if not required.issubset(finding):
-        return f"FINDING_MISSING_FIELDS:{index}"
-    if not all(isinstance(finding[key], str) and finding[key].strip() for key in required):
-        return f"FINDING_INVALID_VALUE:{index}"
-    if finding["severity"].lower() not in ALLOWED_SEVERITIES:
-        return f"FINDING_INVALID_SEVERITY:{index}"
-    return None
+    return (isinstance(finding, dict) and required.issubset(finding)
+            and all(isinstance(finding[k], str) and finding[k].strip() for k in required)
+            and finding["severity"] in SEVERITIES)
 
 
-def validate_output(raw: str) -> dict[str, Any]:
-    if not isinstance(raw, str) or len(raw.encode("utf-8", errors="replace")) > MAX_OUTPUT_BYTES:
-        return reject("OUTPUT_SIZE_LIMIT")
-    if any(ord(char) < 32 and char not in "\r\n\t" for char in raw):
-        return reject("CONTROL_CHARACTER")
+def validate_output(raw: str, expected_agent=None):
+    if not isinstance(raw, str):
+        return reject("INVALID_OUTPUT_TYPE")
     try:
-        data = json.loads(raw)
-    except Exception:
+        if len(raw.encode("utf-8")) > 250_000:
+            return reject("OUTPUT_TOO_LARGE")
+        data = parse_json(raw)
+    except (ValueError, TypeError, RecursionError):
         return reject("INVALID_JSON")
     if not isinstance(data, dict):
         return reject("ROOT_NOT_OBJECT")
-    unknown = set(data) - ALLOWED_FIELDS
-    if unknown:
-        return reject("UNKNOWN_FIELDS:" + ",".join(sorted(unknown)))
-
-    for field in ("agent", "status", "findings"):
+    for field in REQUIRED_FIELDS:
         if field not in data:
             return reject(f"MISSING_FIELD:{field}")
-
-    agent = data.get("agent")
-    status = data.get("status")
-    findings = data.get("findings")
-    if not isinstance(agent, str) or agent.lower() not in ALLOWED_AGENTS:
-        return reject("INVALID_AGENT")
-    if not isinstance(status, str) or status.lower() not in ALLOWED_STATUSES:
+    if not isinstance(data["agent"], str) or not isinstance(data["status"], str) or not isinstance(data["findings"], list):
+        return reject("INVALID_FIELD_TYPES")
+    if data["status"] not in {"pass", "fail", "ok", "quarantined", "error"}:
         return reject("INVALID_STATUS")
-    if not isinstance(findings, list) or len(findings) > MAX_FINDINGS:
-        return reject("INVALID_FINDINGS")
-
-    for index, finding in enumerate(findings):
-        reason = validate_finding(finding, index)
-        if reason:
-            return reject(reason)
-    for field in ("approved_findings", "rejected_findings"):
-        if field in data and not isinstance(data[field], list):
-            return reject(f"INVALID_FIELD:{field}")
-    for field in ("summary", "reasoning", "issue"):
-        if field in data and not isinstance(data[field], str):
-            return reject(f"INVALID_FIELD:{field}")
-
-    if check_external_reference(raw):
-        return reject("EXTERNAL_REFERENCE")
-    for token in FORBIDDEN_TOKENS:
-        if token in raw:
-            return reject(f"PROTOCOL_VIOLATION:{token}")
+    if len(data["findings"]) > 500:
+        return reject("TOO_MANY_FINDINGS")
+    if not all(valid_finding(f) for f in data["findings"]):
+        return reject("INVALID_FINDING_SCHEMA")
+    if expected_agent is not None:
+        if data["agent"] != expected_agent or expected_agent not in ROLE_FIELDS:
+            return reject("UNEXPECTED_AGENT")
+        if data["status"] not in {"pass", "fail"}:
+            return reject("INVALID_ROLE_STATUS")
+        for key, kind in ROLE_FIELDS[expected_agent].items():
+            if not isinstance(data.get(key), kind):
+                return reject(f"INVALID_ROLE_FIELD:{key}")
+        if expected_agent == "SUPERVISOR":
+            for key in ("approved_findings", "rejected_findings"):
+                if len(data[key]) > 500 or not all(valid_finding(f) for f in data[key]):
+                    return reject(f"INVALID_ROLE_FIELD:{key}")
+        if expected_agent == "FIXER":
+            if len(data["patches"]) > 100:
+                return reject("TOO_MANY_PATCHES")
+            for patch in data["patches"]:
+                if (not isinstance(patch, dict) or set(patch) != {"path", "content"}
+                        or not isinstance(patch["path"], str) or not patch["path"]
+                        or not isinstance(patch["content"], str)):
+                    return reject("INVALID_PATCH")
+    try:
+        for text in _strings(data):
+            if check_airgap_violation(text):
+                return reject("AIRGAP_VIOLATION: External URL detected")
+            for token in FORBIDDEN_TOKENS:
+                if token in text:
+                    return reject(f"PROTOCOL_VIOLATION:{token}")
+    except RecursionError:
+        return reject("INVALID_JSON")
     return accept(data)
 
 
-def reject(reason: str) -> dict[str, Any]:
+def reject(reason):
     return {"status": "invalid", "reason": reason, "quarantine_required": True}
 
 
-def accept(data: dict[str, Any]) -> dict[str, Any]:
+def accept(data):
     return {"status": "valid", "validated": True, "artifact": data}
 
 
-def verify_chain(history: list[dict[str, Any]]) -> dict[str, Any]:
+def verify_chain(history: list) -> dict:
     import hashlib
-
-    prev_hash = "0" * 64
-    for index, record in enumerate(history):
-        content = str(record.get("content", ""))
-        claimed_hash = record.get("hash", "")
-        expected_hash = hashlib.sha256(f"{prev_hash}|{content}".encode()).hexdigest()
-        if claimed_hash != expected_hash:
-            return {"trusted_chain_valid": False, "reason": f"HASH_MISMATCH at position {index}", "position": index}
-        prev_hash = claimed_hash
+    previous = "0" * 64
+    for i, record in enumerate(history):
+        if not isinstance(record, dict) or not isinstance(record.get("content"), str):
+            return {"trusted_chain_valid": False, "reason": "INVALID_RECORD", "position": i}
+        expected = hashlib.sha256(f"{previous}|{record['content']}".encode()).hexdigest()
+        if record.get("hash") != expected:
+            return {"trusted_chain_valid": False, "reason": f"HASH_MISMATCH at position {i}", "position": i}
+        previous = expected
     return {"trusted_chain_valid": True, "reason": "CHAIN_VERIFIED"}

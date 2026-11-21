@@ -8,9 +8,12 @@ ven/
 
 # Database / State
 *.sqlite
-*.sqlite-journal
 *.sqlite-shm
 *.sqlite-wal
+*.sqlite-journal
+/runtime/sessions/
+/runtime/LOCKDOWN_FORENSICS.log
+/runtime/LATEST_AUDIT_REPORT.md
 
 # Logs & Forensics
 *.log
@@ -24,6 +27,7 @@ runtime/quarantine/
 
 # Environment
 .env
+*.key
 
 # OS
 .DS_Store

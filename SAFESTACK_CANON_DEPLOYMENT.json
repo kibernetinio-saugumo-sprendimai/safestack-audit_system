@@ -16,12 +16,19 @@
   "requirements": {
     "execution": {
       "must_run_with_explicit_mode": true,
-      "allowed_modes": ["dry-run", "apply", "audit"],
+      "allowed_modes": [
+        "dry-run",
+        "apply",
+        "audit"
+      ],
       "must_fail_closed": true,
       "must_use_lockfile": true
     },
     "system": {
-      "supported_os_family": ["debian", "ubuntu"],
+      "supported_os_family": [
+        "debian",
+        "ubuntu"
+      ],
       "minimum_disk_free_mb": 1024,
       "minimum_ram_mb": 512
     },
@@ -37,7 +44,11 @@
     "logging": {
       "required": true,
       "log_path": "/var/log/safestack-deployment.log",
-      "required_fields": ["timestamp", "action", "result"]
+      "required_fields": [
+        "timestamp",
+        "action",
+        "result"
+      ]
     },
     "verification": {
       "required_pattern": "VERIFY_APPLY_VERIFY",
@@ -52,18 +63,18 @@
     {
       "id": "root-login-disabled",
       "severity": "critical",
-      "type": "file_regex",
-      "path": "/etc/ssh/sshd_config",
-      "pattern": "^\\s*PermitRootLogin\\s+no\\s*$",
-      "expected": true
+      "type": "command_regex",
+      "pattern": "^permitrootlogin no$",
+      "expected": true,
+      "command": "sshd -T"
     },
     {
       "id": "ssh-password-disabled",
       "severity": "critical",
-      "type": "file_regex",
-      "path": "/etc/ssh/sshd_config",
-      "pattern": "^\\s*PasswordAuthentication\\s+no\\s*$",
-      "expected": true
+      "type": "command_regex",
+      "pattern": "^passwordauthentication no$",
+      "expected": true,
+      "command": "sshd -T"
     },
     {
       "id": "firewall-active",

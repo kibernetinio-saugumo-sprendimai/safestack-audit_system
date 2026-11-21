@@ -4,23 +4,23 @@
 
 ---
 
-# 1. Taisyklės
-1. Jei nesupranti – nediegk
-2. Jei negali pakartoti – nepasitikėk
-3. Jei nėra logų – to neįvyko
-4. Jei per daug komponentų – tai nesaugu
-5. Jei reikia root – klausk kodėl
-6. Jei atidarytas portas – jis bus išnaudotas
-7. Jei nėra validacijos – yra pažeidžiamumas
-8. Jei sistema tyli – ji meluoja
-9. Jei negali sustabdyti – nekontroliuoji
-10. Jei negali paaiškinti – tai klaida
+# 1. Rules
+1. If you do not understand it, do not deploy it.
+2. If you cannot reproduce it, do not trust it.
+3. If there are no logs, it did not happen.
+4. Too many components make a system unsafe.
+5. If root is required, ask why.
+6. If a port is open, it will be exploited.
+7. If there is no validation, there is a vulnerability.
+8. If the system is silent, it is lying.
+9. If you cannot stop it, you do not control it.
+10. If you cannot explain it, it is an error.
 
-# 2. Principai
-- Minimalizmas > funkcionalumas
-- Kontrolė > patogumas
-- Aiškumas > automatika
-- Stabilumas > greitis
+# 2. Principles
+- Minimalism > functionality
+- Control > convenience
+- Clarity > automation
+- Stability > speed
 
-# 4. Finalinė taisyklė
-> Sistema, kurios negali pilnai suprasti – nėra tavo sistema.
+# 4. Final rule
+> A system you cannot fully understand is not your system.

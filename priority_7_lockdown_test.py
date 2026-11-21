@@ -1,59 +1,34 @@
+"""Regression test: unsafe inputs end in a terminal LOCKDOWN state."""
 import os
-from app import app
+import tempfile
+from pathlib import Path
+
+import secure_io
+from app import workflow
+
 
 def test_lockdown_enforcement():
-    print("=== SafeStack Lockdown Formalization Test ===")
-    
-    # Simulate a state that should trigger lockdown (e.g. invalid path)
-    inputs = {
-        "messages": [("user", "audit INVALID_PATH_THAT_DOES_NOT_EXIST")],
-        "project_path": "INVALID",
-        "project_context": "ERROR: PATH_NOT_FOUND" # This triggers lockdown in discoverer
-    }
-    
-    config = {"configurable": {"thread_id": "lockdown_test_session"}}
-    
-    # Clean old forensics
-    if os.path.exists("LOCKDOWN_FORENSICS.log"):
-        os.remove("LOCKDOWN_FORENSICS.log")
+    with tempfile.TemporaryDirectory() as temporary:
+        old_runtime = secure_io.RUNTIME_ROOT
+        secure_io.RUNTIME_ROOT = Path(temporary).resolve() / "runtime"
+        try:
+            graph = workflow.compile()
+            events = list(graph.stream(
+                {"messages": [("user", "audit INVALID_PATH_THAT_DOES_NOT_EXIST")]},
+                {"configurable": {"thread_id": "lockdown-test-" + os.urandom(8).hex()}},
+            ))
+            last_node, result = next(iter(events[-1].items()))
+            assert last_node in {"discoverer", "lockdown"}, f"unexpected terminal node: {last_node}"
+            assert result.get("current_state") == "LOCKDOWN"
+            assert result.get("lifecycle_stage") == "HALTED"
+            assert result.get("trust_level") == "UNTRUSTED"
+            evidence = secure_io.RUNTIME_ROOT / "LOCKDOWN_FORENSICS.log"
+            assert evidence.is_file()
+            assert "LOCKDOWN TRIGGERED" in evidence.read_text()
+        finally:
+            secure_io.RUNTIME_ROOT = old_runtime
 
-    print("Executing audit with invalid input...")
-    final_state = None
-    for event in app.stream(inputs, config=config):
-        for node, value in event.items():
-            print(f"Node reached: {node}")
-            final_state = value
-
-    # Verification
-    print("\n--- Verification ---")
-    
-    # 1. Check state
-    if final_state.get("current_state") == "LOCKDOWN":
-        print("PASS: System entered LOCKDOWN state.")
-    else:
-        print(f"FAIL: System in wrong state: {final_state.get('current_state')}")
-
-    # 2. Check lifecycle
-    if final_state.get("lifecycle_stage") == "HALTED":
-        print("PASS: Lifecycle stage set to HALTED.")
-    else:
-        print("FAIL: Lifecycle stage not HALTED.")
-
-    # 3. Check forensics
-    if os.path.exists("LOCKDOWN_FORENSICS.log"):
-        with open("LOCKDOWN_FORENSICS.log", "r") as f:
-            log = f.read()
-            if "LOCKDOWN TRIGGERED" in log:
-                print("PASS: Forensic evidence preserved in LOCKDOWN_FORENSICS.log")
-            else:
-                print("FAIL: Forensics log is empty or incorrect.")
-    else:
-        print("FAIL: Forensic log not created.")
-
-    if final_state.get("trust_level") == "UNTRUSTED":
-        print("PASS: Trust level reset to UNTRUSTED.")
-    else:
-        print("FAIL: Trust level not reset.")
 
 if __name__ == "__main__":
     test_lockdown_enforcement()
+    print("LOCKDOWN TERMINAL-STATE TEST PASSED")

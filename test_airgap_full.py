@@ -26,7 +26,7 @@ for payload, name in test_payloads:
             failures += 1
 
 if failures == 0:
-    print("\nFULL AIR-GAP ENFORCEMENT CONFIRMED.")
+    print("\nListed output-text filter cases passed; this is not network isolation.")
 else:
     print(f"\nAIR-GAP BREACH: {failures} test cases failed!")
     exit(1)

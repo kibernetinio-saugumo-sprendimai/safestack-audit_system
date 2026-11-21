@@ -1,19 +1,18 @@
 {
-  "version": "2.0.0-security-hardening-candidate",
-  "status": "CANDIDATE",
-  "verification_date": "2026-09-04",
+  "version": "1.0.0-GOLDEN",
+  "status": "ARCHIVED_HISTORICAL_BASELINE",
+  "verification_date": "2026-05-06",
   "master_hashes": {
-    "governance_stack": "ef92cf871045e7b7f7bd02996d492d278efec10247c8e6c6de4be0a47dd8d852"
+    "governance_stack": "5dab411fbdd6f445fbddffbcf30f3a5aeb0dcf531559d1860756fd484032cadf",
+    "discoverer_baseline": "e4af70e71d50e0e0a20a2507cae815ad650fddd44e33d47bcbcc0be360b9ac75",
+    "architect_baseline": "e871252ea368fa826f1a69000c5820e853b950640c5d0059158b43feebb0c1de"
   },
   "environment": {
     "model": "llama3",
     "seed": 42,
-    "temperature": 0.0
+    "temperature": 0.0,
+    "note": "Recorded historical model parameters; current runtime configuration is maintained in app.py."
   },
-  "approval": {
-    "signature": null,
-    "required": true,
-    "note": "A hash provides integrity only. Authority requires an independently controlled signature."
-  },
-  "doctrine": "Deterministic. Sovereign. Zero-Trust."
+  "doctrine": "Determinisic. Sovereign. Zero-Trust.",
+  "scope_note": "These hashes describe a historical baseline only. The runtime does not verify them, and they do not certify the current source."
 }

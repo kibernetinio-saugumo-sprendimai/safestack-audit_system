@@ -1,69 +1,125 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-import uvicorn
+from __future__ import annotations
+
 import os
-import sys
+import secrets
+import threading
+from typing import Any
+
+import uvicorn
+from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
+from starlette.responses import JSONResponse
 
 try:
     from app import app
-except ImportError as e:
-    print(f"\n[KLAIDA] Nepavyko rasti 'app.py' failo arba jame yra klaidų: {e}")
-    sys.exit(1)
-except Exception as e:
-    print(f"\n[KRITINĖ KLAIDA] app.py faile yra klaidų: {e}")
-    sys.exit(1)
+except ImportError as error:
+    print(f"\n[ERROR] SafeStack application could not be imported: {error}")
+    raise
+
+MAX_REQUEST_BYTES = 65_536
+
+
+class AuditBodyLimit:
+    """Bound actual streamed bytes before FastAPI buffers or parses JSON."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope.get("path") != "/ask" or scope.get("method") != "POST":
+            return await self.app(scope, receive, send)
+        chunks = []
+        total = 0
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            chunk = message.get("body", b"")
+            total += len(chunk)
+            if total > MAX_REQUEST_BYTES:
+                return await JSONResponse({"detail": "request body too large"}, status_code=413)(scope, receive, send)
+            chunks.append(chunk)
+            if not message.get("more_body", False):
+                break
+        body = b"".join(chunks)
+        delivered = False
+
+        async def replay():
+            nonlocal delivered
+            if not delivered:
+                delivered = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return await receive()
+
+        await self.app(scope, replay, send)
+
 
 server = FastAPI(title="SafeStack AI Agents API")
+server.add_middleware(AuditBodyLimit)
+
+# A single SQLite checkpointer and bounded model calls support one active graph.
+# Reject overload instead of queuing attacker-controlled trees indefinitely.
+_audit_slot = threading.Lock()
+
 
 class TaskRequest(BaseModel):
-    task: str
-    thread_id: str = "vscode_session"
+    task: str = Field(min_length=1, max_length=4000)
+    thread_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+def _stream_audit(inputs: dict[str, Any], config: dict[str, Any]) -> tuple[list, dict]:
+    results = []
+    final_state = {}
+    try:
+        for event in app.stream(inputs, config=config):
+            for node, value in event.items():
+                final_state = value
+                messages = value.get("messages", [])
+                content = ""
+                if messages:
+                    message = messages[-1]
+                    content = message.content if hasattr(message, "content") else (message[1] if isinstance(message, tuple) else str(message))
+                results.append({"agent": node.upper(), "state": value.get("current_state", "AUDITING"),
+                                "trust_level": value.get("trust_level", "UNTRUSTED"),
+                                "runtime_id": value.get("runtime_id", "N/A"),
+                                "integrity_hash": value.get("chain_hash", "N/A"), "content": content})
+    finally:
+        # The API already returns a complete run; persistent checkpoints would
+        # otherwise retain source files and model output without a user-facing need.
+        app.checkpointer.delete_thread(config["configurable"]["thread_id"])
+    return results, final_state
+
 
 @server.get("/")
 async def root():
     return {"status": "online", "docs": "/docs"}
 
+
 @server.post("/ask")
-async def run_team(request: TaskRequest):
-    config = {"configurable": {"thread_id": request.thread_id}}
-    inputs = {
-        "messages": [("user", request.task)], 
-        "project_path": "", 
-        "project_context": "",
-        "memories": ""
-    }
-    os.makedirs("generated_code", exist_ok=True)
-    results = []
+async def run_team(request: TaskRequest, x_api_key: str | None = Header(default=None)):
+    expected_key = os.environ.get("SAFESTACK_API_KEY")
+    if not expected_key:
+        raise HTTPException(status_code=503, detail="API authentication is not configured")
+    if not secrets.compare_digest((x_api_key or "").encode("utf-8"), expected_key.encode("utf-8")):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if not _audit_slot.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="an audit is already running")
+    thread_id = secrets.token_urlsafe(24)
+    config = {"configurable": {"thread_id": thread_id}}
+    inputs = {"messages": [("user", request.task)], "project_path": "", "project_context": "", "memories": ""}
     try:
-        for event in app.stream(inputs, config=config):
-            for node, value in event.items():
-                print(f"Agent: {node.upper()} is working...")
-                msg_content = ""
-                if "messages" in value:
-                    msg = value["messages"][-1]
-                    msg_content = msg.content if hasattr(msg, "content") else (msg[1] if isinstance(msg, tuple) else str(msg))
-                
-                results.append({
-                    "agent": node.upper(), 
-                    "state": value.get("current_state", "AUDITING"),
-                    "trust_level": value.get("trust_level", "UNTRUSTED"),
-                    "runtime_id": value.get("runtime_id", "N/A"),
-                    "integrity_hash": value.get("chain_hash", "N/A"),
-                    "content": msg_content
-                })
-        return {
-            "status": "success", 
-            "session_id": inputs.get("session_id", "N/A"),
-            "results": results
-        }
-    except Exception as e:
-        print(f"Klaida: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        results, final_state = await run_in_threadpool(_stream_audit, inputs, config)
+    except Exception as error:
+        # Keep exception details out of client responses and server logs.
+        raise HTTPException(status_code=500, detail="audit execution failed") from error
+    finally:
+        _audit_slot.release()
+    complete = final_state.get("current_state") == "COMPLETE"
+    return {"status": "success" if complete else "failed", "session_id": thread_id,
+            "state": final_state.get("current_state", "UNKNOWN"),
+            "trust_level": final_state.get("trust_level", "UNTRUSTED"),
+            "report_path": final_state.get("report_path"), "results": results}
+
 
 if __name__ == "__main__":
-    print("\n" + "="*40)
-    print("SafeStack AI Agents server starting...")
-    print("Version: candidate — independent approval required")
-    print("Address: http://localhost:8000")
-    print("="*40 + "\n")
     uvicorn.run(server, host="127.0.0.1", port=8000)
